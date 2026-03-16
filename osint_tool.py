@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""CLI OSINT/SOCMINT ética con soporte de fuentes públicas permitidas."""
+"""CLI OSINT/SOCMINT ética con ejecución automática de consultas públicas."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
+from urllib.request import Request, urlopen
 
 
 @dataclass
@@ -29,6 +31,7 @@ class Reporte:
     fecha_generacion: str
     autorizado: bool
     modo: str
+    ejecucion_automatica: bool
     hallazgos: list[Hallazgo]
     score_promedio: float
     advertencia: str
@@ -50,12 +53,37 @@ PANAMA_FUENTES_PUBLICAS = [
         "url_template": "https://www.datosabiertos.gob.pa/search?query={query}",
         "confiabilidad": 0.7,
     },
-    {
-        "fuente": "Google (consulta abierta)",
-        "url_template": "https://www.google.com/search?q={query}+site:.pa",
-        "confiabilidad": 0.4,
-    },
 ]
+
+
+_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+
+
+def _extraer_titulo(html: str) -> str:
+    match = _TITLE_RE.search(html)
+    if not match:
+        return "Sin título detectable"
+    return re.sub(r"\s+", " ", match.group(1)).strip()[:180]
+
+
+def _resumen_html(html: str) -> str:
+    texto = re.sub(r"<script[\s\S]*?</script>", " ", html, flags=re.IGNORECASE)
+    texto = re.sub(r"<style[\s\S]*?</style>", " ", texto, flags=re.IGNORECASE)
+    texto = re.sub(r"<[^>]+>", " ", texto)
+    texto = re.sub(r"\s+", " ", texto).strip()
+    return texto[:260] if texto else "Sin resumen de contenido"
+
+
+def _consultar_url(url: str, timeout_s: int) -> tuple[bool, str]:
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0 OSINT-Tool/1.0"})
+    try:
+        with urlopen(req, timeout=timeout_s) as response:
+            body = response.read(150_000).decode("utf-8", errors="replace")
+            titulo = _extraer_titulo(body)
+            resumen = _resumen_html(body)
+            return True, f"OK | Título: {titulo} | Resumen: {resumen}"
+    except Exception as exc:
+        return False, f"ERROR al consultar fuente: {exc}"
 
 
 def _cargar_hallazgos(path: Path | None) -> list[Hallazgo]:
@@ -77,18 +105,34 @@ def _cargar_hallazgos(path: Path | None) -> list[Hallazgo]:
     return hallazgos
 
 
-def _hallazgos_automaticos(nombre: str, apellido: str) -> list[Hallazgo]:
+def _hallazgos_automaticos(
+    nombre: str,
+    apellido: str,
+    ejecutar_busqueda: bool,
+    timeout_s: int,
+) -> list[Hallazgo]:
     query = quote_plus(f'"{nombre} {apellido}"')
     now = datetime.now(tz=timezone.utc).date().isoformat()
     hallazgos: list[Hallazgo] = []
 
     for fuente in PANAMA_FUENTES_PUBLICAS:
+        url = fuente["url_template"].format(query=query)
+        if ejecutar_busqueda:
+            ok, detalle = _consultar_url(url, timeout_s=timeout_s)
+            dato = (
+                "Consulta automática ejecutada. " + detalle
+                if ok
+                else "Consulta automática con fallo. " + detalle
+            )
+        else:
+            dato = "Consulta preparada (modo solo links)."
+
         hallazgos.append(
             Hallazgo(
                 fuente=fuente["fuente"],
-                url=fuente["url_template"].format(query=query),
+                url=url,
                 fecha=now,
-                dato="Consulta automática generada para revisión manual y verificación de identidad.",
+                dato=dato,
                 confiabilidad=float(fuente["confiabilidad"]),
             )
         )
@@ -107,6 +151,7 @@ def generar_reporte(
     caso: str,
     autorizado: bool,
     modo: str,
+    ejecucion_automatica: bool,
     hallazgos: list[Hallazgo],
 ) -> Reporte:
     if not autorizado:
@@ -121,6 +166,7 @@ def generar_reporte(
         fecha_generacion=datetime.now(tz=timezone.utc).isoformat(),
         autorizado=autorizado,
         modo=modo,
+        ejecucion_automatica=ejecucion_automatica,
         hallazgos=hallazgos,
         score_promedio=_score_promedio(hallazgos),
         advertencia=(
@@ -138,7 +184,7 @@ def _to_json(reporte: Reporte) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Genera un reporte OSINT/SOCMINT ético con fuentes públicas permitidas"
+        description="Genera un reporte OSINT/SOCMINT ético con ejecución automática"
     )
     parser.add_argument("--nombre", required=True, help="Nombre de la persona")
     parser.add_argument("--apellido", required=True, help="Apellido de la persona")
@@ -152,7 +198,15 @@ def parse_args() -> argparse.Namespace:
         "--modo",
         choices=["manual", "auto"],
         default="auto",
-        help="manual=usa --input; auto=crea consultas en fuentes públicas",
+        help="manual=usa --input; auto=consulta fuentes públicas automáticamente",
+    )
+    parser.add_argument(
+        "--solo-links",
+        action="store_true",
+        help="En modo auto, no consulta fuentes; solo prepara URLs",
+    )
+    parser.add_argument(
+        "--timeout", type=int, default=12, help="Timeout por fuente en segundos"
     )
     parser.add_argument(
         "--input", type=Path, default=None, help="JSON opcional de hallazgos"
@@ -166,8 +220,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
+    ejecucion_automatica = args.modo == "auto" and not args.solo_links
     hallazgos = (
-        _hallazgos_automaticos(args.nombre, args.apellido)
+        _hallazgos_automaticos(
+            args.nombre,
+            args.apellido,
+            ejecutar_busqueda=ejecucion_automatica,
+            timeout_s=args.timeout,
+        )
         if args.modo == "auto"
         else _cargar_hallazgos(args.input)
     )
@@ -178,6 +238,7 @@ def main() -> None:
         caso=args.caso,
         autorizado=args.autorizado,
         modo=args.modo,
+        ejecucion_automatica=ejecucion_automatica,
         hallazgos=hallazgos,
     )
     args.output.write_text(

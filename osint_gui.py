@@ -15,13 +15,14 @@ class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("OSINT/SOCMINT Ético - Panamá")
-        self.geometry("680x420")
+        self.geometry("760x480")
 
         self.nombre = tk.StringVar()
         self.apellido = tk.StringVar()
         self.caso = tk.StringVar(value="Due diligence")
         self.autorizado = tk.BooleanVar(value=False)
         self.output = tk.StringVar(value="reporte_osint_gui.json")
+        self.timeout = tk.IntVar(value=12)
 
         self._build()
 
@@ -30,32 +31,37 @@ class App(tk.Tk):
         frm.pack(fill="both", expand=True)
 
         ttk.Label(frm, text="Nombre").grid(row=0, column=0, sticky="w")
-        ttk.Entry(frm, textvariable=self.nombre, width=40).grid(row=0, column=1, sticky="ew")
+        ttk.Entry(frm, textvariable=self.nombre, width=46).grid(row=0, column=1, sticky="ew")
 
         ttk.Label(frm, text="Apellido").grid(row=1, column=0, sticky="w")
-        ttk.Entry(frm, textvariable=self.apellido, width=40).grid(row=1, column=1, sticky="ew")
+        ttk.Entry(frm, textvariable=self.apellido, width=46).grid(row=1, column=1, sticky="ew")
 
         ttk.Label(frm, text="Caso legítimo").grid(row=2, column=0, sticky="w")
-        ttk.Entry(frm, textvariable=self.caso, width=40).grid(row=2, column=1, sticky="ew")
+        ttk.Entry(frm, textvariable=self.caso, width=46).grid(row=2, column=1, sticky="ew")
 
         ttk.Label(frm, text="Archivo de salida").grid(row=3, column=0, sticky="w")
-        ttk.Entry(frm, textvariable=self.output, width=40).grid(row=3, column=1, sticky="ew")
+        ttk.Entry(frm, textvariable=self.output, width=46).grid(row=3, column=1, sticky="ew")
+
+        ttk.Label(frm, text="Timeout por fuente (s)").grid(row=4, column=0, sticky="w")
+        ttk.Spinbox(frm, from_=3, to=60, textvariable=self.timeout, width=8).grid(
+            row=4, column=1, sticky="w"
+        )
 
         ttk.Checkbutton(
             frm,
             text="Confirmo autorización legal/organizacional",
             variable=self.autorizado,
-        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 8))
+        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 8))
 
-        ttk.Button(frm, text="Generar reporte automático", command=self.generar).grid(
-            row=5, column=0, columnspan=2, pady=(10, 8)
+        ttk.Button(frm, text="Ejecutar búsqueda automática", command=self.generar).grid(
+            row=6, column=0, columnspan=2, pady=(10, 8)
         )
 
-        self.log = tk.Text(frm, height=12)
-        self.log.grid(row=6, column=0, columnspan=2, sticky="nsew")
+        self.log = tk.Text(frm, height=14)
+        self.log.grid(row=7, column=0, columnspan=2, sticky="nsew")
 
         frm.columnconfigure(1, weight=1)
-        frm.rowconfigure(6, weight=1)
+        frm.rowconfigure(7, weight=1)
 
     def generar(self) -> None:
         try:
@@ -67,13 +73,19 @@ class App(tk.Tk):
             if not nombre or not apellido or not caso:
                 raise ValueError("Completa nombre, apellido y caso.")
 
-            hallazgos = _hallazgos_automaticos(nombre, apellido)
+            hallazgos = _hallazgos_automaticos(
+                nombre,
+                apellido,
+                ejecutar_busqueda=True,
+                timeout_s=int(self.timeout.get()),
+            )
             reporte = generar_reporte(
                 nombre=nombre,
                 apellido=apellido,
                 caso=caso,
                 autorizado=self.autorizado.get(),
                 modo="auto",
+                ejecucion_automatica=True,
                 hallazgos=hallazgos,
             )
 
@@ -85,9 +97,9 @@ class App(tk.Tk):
             self.log.delete("1.0", tk.END)
             self.log.insert(
                 tk.END,
-                "Reporte generado correctamente.\n\n"
+                "Búsqueda automática ejecutada.\n\n"
                 f"Archivo: {output}\n\n"
-                + "\n".join(f"- {h.fuente}: {h.url}" for h in hallazgos),
+                + "\n".join(f"- {h.fuente}: {h.dato}" for h in hallazgos),
             )
             messagebox.showinfo("OK", f"Reporte generado en: {output}")
         except Exception as exc:

@@ -1,21 +1,44 @@
 # OSINT/SOCMINT Ético por nombre y apellido (Panamá)
 
-Esta herramienta permite generar un reporte base de investigación OSINT/SOCMINT para casos legítimos (compliance, KYC, due diligence, investigación autorizada).
+Herramienta OSINT/SOCMINT para casos legítimos (compliance, KYC, due diligence, investigación autorizada) que permite ejecutar consultas automáticas sobre fuentes públicas.
 
 > ⚠️ **Límite importante:** no se diseñó para vigilancia masiva, doxxing, acoso ni para perfilar a "todos los ciudadanos".
 
 ## Incluye
 
 - CLI en Python (`osint_tool.py`).
-- Interfaz gráfica local (`osint_gui.py`) con generación automática de enlaces de consulta.
-- Script todo-en-uno para bajar/instalar/correr (`setup_and_run.sh`).
-- Modo automático (`--modo auto`) con fuentes públicas permitidas en Panamá.
+- Interfaz gráfica local (`osint_gui.py`).
+- Script todo-en-uno (`setup_and_run.sh`) para instalar y ejecutar.
+- Modo automático que **sí ejecuta** la consulta por fuente y guarda resumen básico por cada resultado.
 - Exportación de reporte a JSON.
 - Confirmación obligatoria de autorización con `--autorizado`.
 
-## Opción rápida: script único (descargar, instalar y correr)
+## Ejecución automática (CLI)
 
-### 1) Si ya estás dentro del proyecto
+```bash
+python3 osint_tool.py --nombre "Ana" --apellido "Pérez" --caso "KYC interno" --autorizado --modo auto
+```
+
+Ese comando consulta las fuentes configuradas automáticamente y genera `reporte_osint.json`.
+
+### Opcional
+
+- Solo generar URLs sin consultar: `--solo-links`
+- Ajustar timeout por fuente: `--timeout 20`
+
+## Ejecución automática (GUI)
+
+```bash
+python3 osint_gui.py
+```
+
+Pasos:
+1. Completa nombre, apellido y caso.
+2. Ajusta timeout (si quieres).
+3. Marca autorización legal/organizacional.
+4. Pulsa **Ejecutar búsqueda automática**.
+
+## Script único (instalar y correr)
 
 GUI:
 
@@ -29,80 +52,11 @@ CLI:
 ./setup_and_run.sh --cli --nombre "Ana" --apellido "Pérez" --caso "KYC interno" --autorizado --modo auto
 ```
 
-### 2) Si quieres que también lo descargue (clone)
+## Fuentes públicas configuradas
 
-```bash
-./setup_and_run.sh --download "https://github.com/USUARIO/REPO.git" --dir "osint-panama" --gui
-```
-
-> El script crea un entorno virtual (`.venv`), actualiza `pip` y ejecuta GUI o CLI.
-
-## Instalación y ejecución en Kali (paso a paso)
-
-Si te aparece:
-
-```bash
-zsh: no such file or directory: ./setup_and_run.sh
-```
-
-significa que **no estás en la carpeta del proyecto**.
-
-### Opción A: clonar y ejecutar
-
-```bash
-git clone https://github.com/USUARIO/REPO.git osint-panama
-cd osint-panama
-chmod +x setup_and_run.sh
-./setup_and_run.sh --gui
-```
-
-### Opción B: si ya lo descargaste
-
-```bash
-cd /ruta/donde/esta/el/proyecto
-chmod +x setup_and_run.sh
-./setup_and_run.sh --gui
-```
-
-### Ejecutar por CLI (ejemplo)
-
-```bash
-./setup_and_run.sh --cli --nombre "Ana" --apellido "Pérez" --caso "KYC interno" --autorizado --modo auto
-```
-
-## Uso CLI directo
-
-```bash
-python3 osint_tool.py --nombre "Ana" --apellido "Pérez" --caso "KYC interno" --autorizado --modo auto
-```
-
-Salida por defecto: `reporte_osint.json`.
-
-### Modo manual con hallazgos JSON
-
-```bash
-python3 osint_tool.py --nombre "Ana" --apellido "Pérez" --caso "KYC interno" --autorizado --modo manual --input hallazgos.json --output reporte.json
-```
-
-## Uso GUI directo
-
-```bash
-python3 osint_gui.py
-```
-
-Luego:
-1. Completa nombre, apellido y caso.
-2. Marca autorización legal/organizacional.
-3. Pulsa **Generar reporte automático**.
-
-## Fuentes automáticas (plantillas de consulta)
-
-- Gaceta Oficial de Panamá (búsqueda)
-- Órgano Judicial de Panamá (búsqueda web)
-- Datos Abiertos Panamá (catálogo)
-- Google restringido a `.pa`
-
-Estas consultas deben revisarse manualmente para validar identidad (homónimos) y contexto.
+- Gaceta Oficial de Panamá
+- Órgano Judicial de Panamá
+- Datos Abiertos Panamá
 
 ## Recomendaciones de cumplimiento
 
